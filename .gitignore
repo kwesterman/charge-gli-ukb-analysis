@@ -1,0 +1,4 @@
+# Private/large data files
+data/
+# UKB decryption key
+*.key
