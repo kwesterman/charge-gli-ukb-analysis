@@ -1,5 +1,5 @@
 ## TO DO:
-- Must exclude individuals without genetics data prior to phenotyping (use existing of genetic PCs?)
+## - Must exclude individuals without genetics data prior to phenotyping (use existing of genetic PCs?)
 
 
 # Preliminaries ---------------------------------------------------------
@@ -19,7 +19,7 @@ winsorize <- function(x, SDs=6) {
 }
 
 basic_phenos_df <- fread("../data/raw/ukb47880.csv", nrows=10000, data.table=FALSE)
-blood_assays_df <- fread("../data/raw/ukb50493.csv", nrows=10000, data.table=FALSE)
+blood_assays_df <- fread("../data/raw/ukb51002.csv", nrows=10000, data.table=FALSE)
 urine_assays_df <- fread("../data/raw/ukb50582.csv", nrows=10000, data.table=FALSE)
 
 # Covariates -------------------------------------------------------------
@@ -41,7 +41,7 @@ genetic_covar_df <- basic_phenos_df %>%
     id = eid,
     contains("22009-0")  # Genetic PC fields
   ) %>%
-  rename_all(function(nm) gsub("22009-0.", "gPC", nm))
+  rename_with(function(nm) gsub("22009-0.", "gPC", nm))
 
 covar_df <- left_join(basic_covar_df, genetic_covar_df, by="id")
 
@@ -67,7 +67,6 @@ sleep_df <- sleep_df %>%
   mutate(stst = as.integer(sleep_dur_resid <= quantile(sleep_dur_resid, 0.2)),
 	 ltst = as.integer(sleep_dur_resid >= quantile(sleep_dur_resid, 0.8))) %>%
   select(id, sleep_dur_resid, stst, ltst)
-  
 
 depression_df <- basic_phenos_df %>%
   select(id = eid)
@@ -87,42 +86,60 @@ exposure_df <- smoking_df %>%
 
 # Outcomes ---------------------------------------------------------------------
 
-#ukb_biomarker_fields <- c(
-#  chol = 30690, 
-#  glu = 30740, hba1c = 30750,
-#  hdl = 30760, ldl = 30780, 
-#  tg = 30870, 
-#)
+sr_meds <- basic_phenos_df %>%
+  select(
+    id = eid,
+    contains("6177-0.")  # Self-reported cholesterol/BP/insulin medication use
+  ) %>%
+  mutate(
+    bp_med = rowSums(.[, paste0("6177-0.", 0:2)] == 2, na.rm=TRUE) >= 1,
+    chol_med = rowSums(.[, paste0("6177-0.", 0:2)] == 1, na.rm=TRUE) >= 1
+  )
 
 bp_df <- basic_phenos_df %>%
   select(
     id = eid,
     dbp1 = `4079-0.0`, dbp2 = `4079-0.1`,
-    sbp1 = `4080-0.0`, sbp2 = `4080-0.1`,
-    contains("6177-0.")  # Self-reported cholesterol/BP/insulin medication use
+    sbp1 = `4080-0.0`, sbp2 = `4080-0.1`
   ) %>%
+  inner_join(sr_meds, by="id") %>%
   mutate(
     dbp = (dbp1 + dbp2) / 2,
     sbp = (sbp1 + sbp2) / 2,
-    bp_med = rowSums(.[, paste0("6177-0.", 0:2)] == 2, na.rm=TRUE) >= 1,
     dbp = ifelse(bp_med, dbp + 10, dbp),
     sbp = ifelse(bp_med, sbp + 15, sbp),
     pp = sbp - dbp
   ) %>%
-  mutate_at(vars(dbp, sbp, pp), winsorize) %>%
+  mutate(across(c(dbp, sbp, pp), winsorize)) %>%
   select(id, dbp, sbp, pp, bp_med)
 
 
+ukb_biomarker_fields <- c(
+  chol = 30690,
+  glu = 30740, hba1c = 30750,
+  hdl = 30760, ldl = 30780,
+  tg = 30870
+)
+
 biomarker_df <- blood_assays_df %>%
   select(
-    id = eid
-    #all_of(setNames(paste0(ukb_biomarker_fields, "-0.0"), 
-    #                names(ukb_biomarker_fields)))
+    id = eid,
+    all_of(setNames(paste0(ukb_biomarker_fields, "-0.0"),
+                   names(ukb_biomarker_fields)))
   )
 
+lipids_df <- biomarker_df %>%
+  select(id, hdl, tg, ldl) %>%
+  # Need fasting adjustment here
+  inner_join(sr_meds, by="id") %>%
+  mutate(ldl = ifelse(chol_med, ldl / 0.7, ldl)) %>%
+  mutate(across(c(hdl, tg), log)) %>%  # Confirm that log-transform should happen AFTER meds adjustment
+  mutate(across(c(hdl, tg, ldl), winsorize)) %>%
+  select(id, hdl, tg, ldl)
+  
 outcome_df <- full_join(
   bp_df, 
-  biomarker_df,
+  lipids_df,
   by="id"
 )
 
