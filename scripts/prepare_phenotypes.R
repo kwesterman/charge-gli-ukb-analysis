@@ -1,11 +1,5 @@
-#############
-## TW: 
-setwd("/data/M_GENETICS/20Charge2/git-develop/charge-gli-ukb-analysis/scripts/")
-
-#############
 ## TO DO:
 ## - Must exclude individuals without genetics data prior to phenotyping (use existing of genetic PCs?)
-
 
 # Preliminaries ---------------------------------------------------------
 
