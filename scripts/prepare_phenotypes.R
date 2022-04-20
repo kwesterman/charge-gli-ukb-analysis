@@ -1,3 +1,8 @@
+#############
+## TW: 
+setwd("/data/M_GENETICS/20Charge2/git-develop/charge-gli-ukb-analysis/scripts/")
+
+#############
 ## TO DO:
 ## - Must exclude individuals without genetics data prior to phenotyping (use existing of genetic PCs?)
 
@@ -21,6 +26,7 @@ winsorize <- function(x, SDs=6) {
 basic_phenos_df <- fread("../data/raw/ukb47880.csv", nrows=10000, data.table=FALSE)
 blood_assays_df <- fread("../data/raw/ukb51002.csv", nrows=10000, data.table=FALSE)
 urine_assays_df <- fread("../data/raw/ukb50582.csv", nrows=10000, data.table=FALSE)
+med_atc_df <- fread("../data/wu_et_al/41467_2019_9572_MOESM3_ESM_tw.txt", data.table=FALSE)
 
 # Covariates -------------------------------------------------------------
 
@@ -62,6 +68,7 @@ sleep_df <- basic_phenos_df %>%
   ) %>%
   mutate(sleep_dur = ifelse(sleep_dur %in% c(-1, -3), NA, sleep_dur)) %>%
   filter(!is.na(sleep_dur))
+  
 sleep_df$sleep_dur_resid <- resid(lm(sleep_dur ~ sex * age, data=sleep_df))
 sleep_df <- sleep_df %>%
   mutate(stst = as.integer(sleep_dur_resid <= quantile(sleep_dur_resid, 0.2)),
@@ -85,16 +92,24 @@ exposure_df <- smoking_df %>%
   left_join(education_df, by="id")
 
 # Outcomes ---------------------------------------------------------------------
+ls_atc_codes = strsplit(med_atc_df$Medication_ATC_code," |",fixed=T)
+is_bp_med = unlist(lapply(ls_atc_codes, function(x) any(grepl("^C02|^C03|^C07|^C08|^C09",x))))
+is_chol_med = unlist(lapply(ls_atc_codes, function(x) any(grepl("^C10",x))))
 
-sr_meds <- basic_phenos_df %>%
+meds_df <- basic_phenos_df %>%
   select(
     id = eid,
-    contains("6177-0.")  # Self-reported cholesterol/BP/insulin medication use
+    contains("6177-0."),  # Self-reported cholesterol/BP/insulin medication use
+	contains("20003-0.")
   ) %>%
   mutate(
-    bp_med = rowSums(.[, paste0("6177-0.", 0:2)] == 2, na.rm=TRUE) >= 1,
-    chol_med = rowSums(.[, paste0("6177-0.", 0:2)] == 1, na.rm=TRUE) >= 1
-  )
+    bp_med_sr = rowSums(.[, paste0("6177-0.", 0:2)] == 2, na.rm=TRUE) >= 1,
+    chol_med_sr = rowSums(.[, paste0("6177-0.", 0:2)] == 1, na.rm=TRUE) >= 1,
+	bp_med_atc = apply(.[, paste0("20003-0.", 0:47)],1,function(x) any(x%in%med_atc_df$Coding[is_bp_med])),
+	chol_med_atc = apply(.[, paste0("20003-0.", 0:47)],1,function(x) any(x%in%med_atc_df$Coding[is_chol_med])),
+	bp_med = bp_med_sr | bp_med_atc, 
+	chol_med = chol_med_sr | chol_med_atc
+  ) 
 
 bp_df <- basic_phenos_df %>%
   select(
@@ -102,7 +117,7 @@ bp_df <- basic_phenos_df %>%
     dbp1 = `4079-0.0`, dbp2 = `4079-0.1`,
     sbp1 = `4080-0.0`, sbp2 = `4080-0.1`
   ) %>%
-  inner_join(sr_meds, by="id") %>%
+  inner_join(meds_df, by="id") %>%
   mutate(
     dbp = (dbp1 + dbp2) / 2,
     sbp = (sbp1 + sbp2) / 2,
@@ -131,7 +146,7 @@ biomarker_df <- blood_assays_df %>%
 lipids_df <- biomarker_df %>%
   select(id, hdl, tg, ldl) %>%
   # Need fasting adjustment here
-  inner_join(sr_meds, by="id") %>%
+  inner_join(meds_df, by="id") %>%
   mutate(ldl = ifelse(chol_med, ldl / 0.7, ldl)) %>%
   mutate(across(c(hdl, tg), log)) %>%  # Confirm that log-transform should happen AFTER meds adjustment
   mutate(across(c(hdl, tg, ldl), winsorize)) %>%
