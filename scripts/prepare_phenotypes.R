@@ -1,6 +1,13 @@
 ## TO DO:
 ## - Must exclude individuals without genetics data prior to phenotyping (use existing of genetic PCs?)
 
+# Input filenames -------------------------------------------------------
+
+basic_phenos_file <- "../data/raw/ukb47880.csv"
+blood_assays_file <- "../data/raw/ukb51002.csv"
+urine_assays_file <- "../data/raw/ukb50582.csv"
+med_atc_file <- "../data/wu_et_al/41467_2019_9572_MOESM3_ESM_tw.txt"
+
 # Preliminaries ---------------------------------------------------------
 
 library(tidyverse)
@@ -17,10 +24,10 @@ winsorize <- function(x, SDs=6) {
   )
 }
 
-basic_phenos_df <- fread("../data/raw/ukb47880.csv", nrows=10000, data.table=FALSE)
-blood_assays_df <- fread("../data/raw/ukb51002.csv", nrows=10000, data.table=FALSE)
-urine_assays_df <- fread("../data/raw/ukb50582.csv", nrows=10000, data.table=FALSE)
-med_atc_df <- fread("../data/wu_et_al/41467_2019_9572_MOESM3_ESM_tw.txt", data.table=FALSE)
+basic_phenos_df <- fread(basic_phenos_file, nrows=10000, data.table=FALSE)
+blood_assays_df <- fread(blood_assays_file, nrows=10000, data.table=FALSE)
+urine_assays_df <- fread(urine_assays_file, nrows=10000, data.table=FALSE)
+med_atc_df <- fread(med_atc_file, data.table=FALSE)
 
 # Covariates -------------------------------------------------------------
 
@@ -29,11 +36,14 @@ basic_covar_df <- basic_phenos_df %>%
     id = eid,
     age = `21022-0.0`,
     sex = `31-0.0`,  # Self-reported; 0=Female, 1=Male
-    bmi = `21001-0.0`
+    bmi = `21001-0.0`,
+    ethnicity = `21000-0.0`,
+    assessment_center = `54-0.0`
   ) %>%
   mutate(
     age_sq = age ** 2,
-    sex = 1 - sex  # Switch coding to 0=Male, 1=Female
+    sex = 1 - sex,  # Switch coding to 0=Male, 1=Female
+    ethnicity = ifelse(ethnicity %in% c(-1, -3), NA, ethnicity)
   )
 
 genetic_covar_df <- basic_phenos_df %>%
@@ -48,10 +58,38 @@ covar_df <- left_join(basic_covar_df, genetic_covar_df, by="id")
 # Exposures --------------------------------------------------------------------
 
 smoking_df <- basic_phenos_df %>%
-  select(id = eid)
+  select(id = eid,
+         smoker_status = `20116-0.0`,
+         cigs_per_day = `3456-0.0`
+        ) %>%
+  mutate(cursmk = ifelse(is.na(smoker_status) | smoker_status == -3, NA,
+                         ifelse(smoker_status == 2, 1, 0)),
+         cigs_per_day = ifelse(cigs_per_day %in% c(-1, -3, -10), NA, cigs_per_day), # -10 = < 1 per day
+         pack_years = cigs_per_day * 365 / 20,
+         qcpd = cigs_per_day, # properly define with resids from adjusted model
+         dpy25 = pack_years # properly define with resids from adjusted model
+        ) %>%
+  select(id, cursmk, qcpd, dpy25)
 
 alcohol_df <- basic_phenos_df %>%
-  select(id = eid)
+  select(id = eid,
+         drinker_status = `20117-0.0`,
+         n_wk_beer = `1588`,
+         n_wk_wine_red = `1568`,
+         n_wk_wine_wht_chm = `1578`,
+         n_wk_wine_fort = `1608`,
+         n_wk_spirits = `1598`
+        ) %>%
+  mutate(n_wk_beer = ifelse(n_wk_beer %in% c(-1, -3), NA, n_wk_beer),
+         n_wk_wine_red = ifelse(n_wk_wine_red %in% c(-1, -3), NA, n_wk_wine_red),
+         n_wk_wine_wht_chm = ifelse(n_wk_wine_wht_chm %in% c(-1, -3), NA, n_wk_wine_wht_chm),
+         n_wk_wine_fort = ifelse(n_wk_wine_fort %in% c(-1, -3), NA, n_wk_wine_fort),
+         n_wk_spirits = ifelse(n_wk_spirits %in% c(-1, -3), NA, n_wk_spirits)
+         curdrk = ifelse(is.na(drinker_status) | drinker_status == -3, NA,
+                           ifelse(drinker_status == 2, 1, 0)),
+         drinks_per_week = sum(n_wk_beer + n_wk_wine_red + n_wk_wine_wht_chm + n_wk_wine_fort + n_wk_spirits, na.rm=TRUE)
+        ) %>%
+  select(id, curdrk, drinks_per_week)
 
 sleep_df <- basic_phenos_df %>%
   select(
@@ -141,10 +179,13 @@ lipids_df <- biomarker_df %>%
   select(id, hdl, tg, ldl) %>%
   # Need fasting adjustment here
   inner_join(meds_df, by="id") %>%
-  mutate(ldl = ifelse(chol_med, ldl / 0.7, ldl)) %>%
+  mutate(ldl_orig = ldl, # keeping original variables if needed later for descriptive statistics
+	 hdl_orig = hdl, 
+	 tg_orig = tg,
+	 ldl = ifelse(chol_med, ldl / 0.7, ldl)) %>%
   mutate(across(c(hdl, tg), log)) %>%  # Confirm that log-transform should happen AFTER meds adjustment
   mutate(across(c(hdl, tg, ldl), winsorize)) %>%
-  select(id, hdl, tg, ldl)
+  select(id, hdl, tg, ldl, hdl_orig, tg_orig, ldl_orig)
   
 outcome_df <- full_join(
   bp_df, 
