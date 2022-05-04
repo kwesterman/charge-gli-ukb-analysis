@@ -7,6 +7,7 @@ basic_phenos_file <- "../data/raw/ukb47880.csv"
 blood_assays_file <- "../data/raw/ukb51002.csv"
 urine_assays_file <- "../data/raw/ukb50582.csv"
 med_atc_file <- "../data/wu_et_al/41467_2019_9572_MOESM3_ESM_tw.txt"
+sample_exclusion_files <- c("w19416_20210809.csv", "w8343_20210809.csv", "w8343_20220222.csv")
 
 # Preliminaries ---------------------------------------------------------
 
@@ -74,21 +75,22 @@ smoking_df <- basic_phenos_df %>%
 alcohol_df <- basic_phenos_df %>%
   select(id = eid,
          drinker_status = `20117-0.0`,
-         n_wk_beer = `1588`,
-         n_wk_wine_red = `1568`,
-         n_wk_wine_wht_chm = `1578`,
-         n_wk_wine_fort = `1608`,
-         n_wk_spirits = `1598`
+         n_wk_beer = `1588-0.0`,
+         n_wk_wine_red = `1568-0.0`,
+         n_wk_wine_wht_chm = `1578-0.0`,
+         n_wk_wine_fort = `1608-0.0`,
+         n_wk_spirits = `1598-0.0`
         ) %>%
   mutate(n_wk_beer = ifelse(n_wk_beer %in% c(-1, -3), NA, n_wk_beer),
          n_wk_wine_red = ifelse(n_wk_wine_red %in% c(-1, -3), NA, n_wk_wine_red),
          n_wk_wine_wht_chm = ifelse(n_wk_wine_wht_chm %in% c(-1, -3), NA, n_wk_wine_wht_chm),
          n_wk_wine_fort = ifelse(n_wk_wine_fort %in% c(-1, -3), NA, n_wk_wine_fort),
-         n_wk_spirits = ifelse(n_wk_spirits %in% c(-1, -3), NA, n_wk_spirits)
+         n_wk_spirits = ifelse(n_wk_spirits %in% c(-1, -3), NA, n_wk_spirits),
          curdrk = ifelse(is.na(drinker_status) | drinker_status == -3, NA,
                            ifelse(drinker_status == 2, 1, 0)),
-         drinks_per_week = sum(n_wk_beer + n_wk_wine_red + n_wk_wine_wht_chm + n_wk_wine_fort + n_wk_spirits, na.rm=TRUE)
         ) %>%
+  rowwise() %>% mutate(drinks_per_week = sum(n_wk_beer, n_wk_wine_red, n_wk_wine_wht_chm, n_wk_wine_fort, n_wk_spirits, na.rm=T)) %>%
+  mutate(drinks_per_week = ifelse(is.na(curdrk) | curdrk == 0, NA, drinks_per_week)) %>%
   select(id, curdrk, drinks_per_week)
 
 sleep_df <- basic_phenos_df %>%
@@ -160,12 +162,10 @@ bp_df <- basic_phenos_df %>%
   mutate(across(c(dbp, sbp, pp), winsorize)) %>%
   select(id, dbp, sbp, pp, bp_med)
 
-
 ukb_biomarker_fields <- c(
-  chol = 30690,
-  glu = 30740, hba1c = 30750,
-  hdl = 30760, ldl = 30780,
-  tg = 30870
+  chol = 30690, glu = 30740, 
+  hba1c = 30750, hdl = 30760, 
+  ldl = 30780, tg = 30870
 )
 
 biomarker_df <- blood_assays_df %>%
@@ -179,6 +179,9 @@ lipids_df <- biomarker_df %>%
   select(id, hdl, tg, ldl) %>%
   # Need fasting adjustment here
   inner_join(meds_df, by="id") %>%
+  mutate(hdl = hdl * 18, # 1 mmol/L = 18 mg/dL
+	 ldl = ldl * 18,
+	 tg = tg * 18) %>%
   mutate(ldl_orig = ldl, # keeping original variables if needed later for descriptive statistics
 	 hdl_orig = hdl, 
 	 tg_orig = tg,
@@ -195,10 +198,12 @@ outcome_df <- full_join(
 
 # Final processing -------------------------------------------------------------
 
+# Need to remove individuals who revoked consent
+sample_exclude_ids <- unique(unlist(lapply(sample_exclusion_files, readLines)))
+
 final_pheno_df <- covar_df %>%
   left_join(exposure_df, by="id") %>%
-  left_join(outcome_df, by="id")
-
-# Need to remove individuals who revoked consent
+  left_join(outcome_df, by="id") %>%
+  filter(!(id %in% sample_exclude_ids)) 
 
 write_csv(final_pheno_df, "test_phenos.csv")
