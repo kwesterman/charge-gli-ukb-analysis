@@ -7,6 +7,8 @@ basic_phenos_file <- "../data/raw/ukb47880.csv"
 blood_assays_file <- "../data/raw/ukb51002.csv"
 urine_assays_file <- "../data/raw/ukb50582.csv"
 med_atc_file <- "../data/wu_et_al/41467_2019_9572_MOESM3_ESM_tw.txt"
+pan_ancestry_file <- "your_path_here"
+pa_bridge_file <- "your_path_here"
 sample_exclusion_files <- c("w19416_20210809.csv", "w8343_20210809.csv", "w8343_20220222.csv")
 
 # Preliminaries ---------------------------------------------------------
@@ -28,6 +30,8 @@ winsorize <- function(x, SDs=6) {
 basic_phenos_df <- fread(basic_phenos_file, nrows=10000, data.table=FALSE)
 blood_assays_df <- fread(blood_assays_file, nrows=10000, data.table=FALSE)
 urine_assays_df <- fread(urine_assays_file, nrows=10000, data.table=FALSE)
+pan_ancestry_df <- fread(pan_ancestry_file, nrows=10000, data.table=FALSE)
+pa_bridge_df <- fread(pa_bridge_file, data.table=FALSE)
 med_atc_df <- fread(med_atc_file, data.table=FALSE)
 
 # Covariates -------------------------------------------------------------
@@ -39,7 +43,8 @@ basic_covar_df <- basic_phenos_df %>%
     sex = `31-0.0`,  # Self-reported; 0=Female, 1=Male
     bmi = `21001-0.0`,
     ethnicity = `21000-0.0`,
-    assessment_center = `54-0.0`
+    assessment_center = `54-0.0`,
+    fasting_time = `74-0.0`
   ) %>%
   mutate(
     age_sq = age ** 2,
@@ -47,12 +52,19 @@ basic_covar_df <- basic_phenos_df %>%
     ethnicity = ifelse(ethnicity %in% c(-1, -3), NA, ethnicity)
   )
 
-genetic_covar_df <- basic_phenos_df %>%
-  select(
-    id = eid,
-    contains("22009-0")  # Genetic PC fields
-  ) %>%
-  rename_with(function(nm) gsub("22009-0.", "gPC", nm))
+## Code using the old PCs, ok to remove? Replaced with lines below
+# genetic_covar_df <- basic_phenos_df %>%
+#   select(
+#     id = eid,
+#     contains("22009-0")  # Genetic PC fields
+#   ) %>%
+#   rename_with(function(nm) gsub("22009-0.", "gPC", nm))
+
+pa_bridge_df <- pa_bridge_df %>% rename(id="V1", s="V2")
+
+genetic_covar_df <- left_join(pan_ancestry_df, pa_bridge_df, by="s") %>% 
+  select(id, pop, related, contains("PC")) %>% 
+  rename_with(function(nm) sub("^PC", "gPC", nm))
 
 covar_df <- left_join(basic_covar_df, genetic_covar_df, by="id")
 
@@ -163,32 +175,36 @@ bp_df <- basic_phenos_df %>%
   select(id, dbp, sbp, pp, bp_med)
 
 ukb_biomarker_fields <- c(
-  chol = 30690, glu = 30740, 
-  hba1c = 30750, hdl = 30760, 
-  ldl = 30780, tg = 30870
+  chol = 30690, glu = 30740, glu_date = 30741, 
+  hba1c = 30750, hdl = 30760, ldl = 30780,
+  tg = 30870, tg_date = 30871
 )
 
-biomarker_df <- blood_assays_df %>%
+biomarker_df <- left_join(blood_assays_df, basic_covar_df, by=c("eid" = "id")) %>% # merge in fasting_time
   select(
     id = eid,
     all_of(setNames(paste0(ukb_biomarker_fields, "-0.0"),
-                   names(ukb_biomarker_fields)))
+                   names(ukb_biomarker_fields))),
+    fasting_time
   )
 
 lipids_df <- biomarker_df %>%
-  select(id, hdl, tg, ldl) %>%
+  select(id, hdl, tg, ldl, glu_date, tg_date, fasting_time) %>%
   # Need fasting adjustment here
   inner_join(meds_df, by="id") %>%
   mutate(hdl = hdl * 18, # 1 mmol/L = 18 mg/dL
 	 ldl = ldl * 18,
-	 tg = tg * 18) %>%
+	 tg = tg * 18, 
+	 fasting_status = ifelse(!is.na(fasting_time) & fasting_time >= 8, "fasted",
+				 ifelse(!is.na(glu_date) & !is.na(tg_date) & glu_date == tg_date, 
+					"pseudo-fasted", "non-fasted"))) %>%
   mutate(ldl_orig = ldl, # keeping original variables if needed later for descriptive statistics
 	 hdl_orig = hdl, 
 	 tg_orig = tg,
 	 ldl = ifelse(chol_med, ldl / 0.7, ldl)) %>%
   mutate(across(c(hdl, tg), log)) %>%  # Confirm that log-transform should happen AFTER meds adjustment
   mutate(across(c(hdl, tg, ldl), winsorize)) %>%
-  select(id, hdl, tg, ldl, hdl_orig, tg_orig, ldl_orig)
+  select(id, hdl, tg, ldl, hdl_orig, tg_orig, ldl_orig, chol_med, fasting_status)
   
 outcome_df <- full_join(
   bp_df, 
