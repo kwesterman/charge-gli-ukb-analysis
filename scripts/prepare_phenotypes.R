@@ -190,11 +190,11 @@ biomarker_df <- left_join(blood_assays_df, basic_covar_df, by=c("eid" = "id")) %
 
 lipids_df <- biomarker_df %>%
   select(id, hdl, tg, ldl, glu_date, tg_date, fasting_time) %>%
-  # Need fasting adjustment here
+  # Need fasting adjustment here (Note: glu.mg/dL = glu*18, chol.mg/dl = chol*38.67) for future reference
   inner_join(meds_df, by="id") %>%
-  mutate(hdl = hdl * 18, # 1 mmol/L = 18 mg/dL
-	 ldl = ldl * 18,
-	 tg = tg * 18, 
+  mutate(hdl = hdl * 38.67, # 1 mmol/L = 38.67 mg/dL for HDL
+	 ldl = ldl * 38.67, # 1 mmol/L = 38.67 mg/dL for LDL
+	 tg = tg * 88.57, # 1 mmol/L = 88.57 mg/dL for TG
 	 fasting_status = ifelse(!is.na(fasting_time) & fasting_time >= 8, "fasted",
 				 ifelse(!is.na(glu_date) & !is.na(tg_date) & glu_date == tg_date, 
 					"pseudo-fasted", "non-fasted"))) %>%
