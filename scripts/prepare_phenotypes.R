@@ -1,17 +1,19 @@
-## TO DO:
-## - Must exclude individuals without genetics data prior to phenotyping (use existing of genetic PCs?)
+# Parse command-line argument(s) -----------------------------------------------
 
-# Input filenames -------------------------------------------------------
+args <- commandArgs(trailingOnly=TRUE)
+tag <- if (!is.null(args[[1]])) args[[1]] else "test"  # Usually should be the date in YYYYMMDD format
+
+# Input filenames --------------------------------------------------------------
 
 basic_phenos_file <- "../data/raw/ukb47880.csv"
 blood_assays_file <- "../data/raw/ukb51002.csv"
 urine_assays_file <- "../data/raw/ukb50582.csv"
-med_atc_file <- "../data/wu_et_al/41467_2019_9572_MOESM3_ESM_tw.txt"
-pan_ancestry_file <- "your_path_here"
-pa_bridge_file <- "your_path_here"
-sample_exclusion_files <- c("w19416_20210809.csv", "w8343_20210809.csv", "w8343_20220222.csv")
+med_atc_file <- "../data/raw/41467_2019_9572_MOESM3_ESM_tw.txt"
+pan_ancestry_file <- "../data/raw/Files\ for\ retman/all_pops_non_eur_pruned_within_pop_pc_covs.tsv"
+pa_bridge_file <- "../data/raw/ukb8343bridge31063.txt"
+sample_exclusion_file <- "../data/raw/w8343_20220222.csv"
 
-# Preliminaries ---------------------------------------------------------
+# Preliminaries ----------------------------------------------------------------
 
 library(tidyverse)
 library(data.table)
@@ -27,14 +29,24 @@ winsorize <- function(x, SDs=6) {
   )
 }
 
-basic_phenos_df <- fread(basic_phenos_file, nrows=10000, data.table=FALSE)
-blood_assays_df <- fread(blood_assays_file, nrows=10000, data.table=FALSE)
-urine_assays_df <- fread(urine_assays_file, nrows=10000, data.table=FALSE)
-pan_ancestry_df <- fread(pan_ancestry_file, nrows=10000, data.table=FALSE)
-pa_bridge_df <- fread(pa_bridge_file, data.table=FALSE)
-med_atc_df <- fread(med_atc_file, data.table=FALSE)
+pa_bridge_df <- fread(pa_bridge_file, col.names=c("id", "s"), data.table=FALSE)
+pan_ancestry_df <- fread(pan_ancestry_file, data.table=FALSE) %>%
+  inner_join(pa_bridge_df, by="s")
 
-# Covariates -------------------------------------------------------------
+sample_exclusions <- readLines(sample_exclusion_file)  # Participants who revoked consent
+
+valid_ids <- setdiff(pan_ancestry_df$id, sample_exclusions)  # Participants with genetics but not having revoked consent
+
+basic_phenos_df <- fread(basic_phenos_file, nrows=10000, data.table=FALSE) %>%
+  filter(eid %in% valid_ids)
+blood_assays_df <- fread(blood_assays_file, nrows=10000, data.table=FALSE) %>%
+  filter(eid %in% valid_ids)
+urine_assays_df <- fread(urine_assays_file, nrows=10000, data.table=FALSE) %>%
+  filter(eid %in% valid_ids)
+med_atc_df <- fread(med_atc_file, data.table=FALSE) %>%
+  filter(eid %in% valid_ids)
+
+# Covariates -------------------------------------------------------------------
 
 basic_covar_df <- basic_phenos_df %>%
   select(
@@ -52,17 +64,9 @@ basic_covar_df <- basic_phenos_df %>%
     ethnicity = ifelse(ethnicity %in% c(-1, -3), NA, ethnicity)
   )
 
-## Code using the old PCs, ok to remove? Replaced with lines below
-# genetic_covar_df <- basic_phenos_df %>%
-#   select(
-#     id = eid,
-#     contains("22009-0")  # Genetic PC fields
-#   ) %>%
-#   rename_with(function(nm) gsub("22009-0.", "gPC", nm))
-
-pa_bridge_df <- pa_bridge_df %>% rename(id="V1", s="V2")
-
-genetic_covar_df <- left_join(pan_ancestry_df, pa_bridge_df, by="s") %>% 
+genetic_covar_df <- pa_bridge_df %>% 
+  rename(id="V1", s="V2") %>%
+  left_join(pan_ancestry_df, by="s") %>% 
   select(id, pop, related, contains("PC")) %>% 
   rename_with(function(nm) sub("^PC", "gPC", nm))
 
@@ -138,6 +142,7 @@ exposure_df <- smoking_df %>%
   left_join(education_df, by="id")
 
 # Outcomes ---------------------------------------------------------------------
+
 ls_atc_codes = strsplit(med_atc_df$Medication_ATC_code," |",fixed=T)
 is_bp_med = unlist(lapply(ls_atc_codes, function(x) any(grepl("^C02|^C03|^C07|^C08|^C09",x))))
 is_chol_med = unlist(lapply(ls_atc_codes, function(x) any(grepl("^C10",x))))
@@ -214,12 +219,9 @@ outcome_df <- full_join(
 
 # Final processing -------------------------------------------------------------
 
-# Need to remove individuals who revoked consent
-sample_exclude_ids <- unique(unlist(lapply(sample_exclusion_files, readLines)))
-
 final_pheno_df <- covar_df %>%
   left_join(exposure_df, by="id") %>%
-  left_join(outcome_df, by="id") %>%
-  filter(!(id %in% sample_exclude_ids)) 
+  left_join(outcome_df, by="id")
 
-write_csv(final_pheno_df, "test_phenos.csv")
+pheno_filename <- paste0("ukb_phenos_", tag, ".csv")
+write_csv(final_pheno_df, pheno_filename)
