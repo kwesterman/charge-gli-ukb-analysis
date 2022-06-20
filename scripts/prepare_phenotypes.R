@@ -8,7 +8,10 @@ tag <- if (!is.null(args[[1]])) args[[1]] else "test"  # Usually should be the d
 basic_phenos_file <- "../data/raw/ukb47880.csv"
 blood_assays_file <- "../data/raw/ukb51002.csv"
 urine_assays_file <- "../data/raw/ukb50582.csv"
+
 med_atc_file <- "../data/raw/wu_et_al/41467_2019_9572_MOESM3_ESM_tw.txt"
+med_atc_file <- "../data/raw/41467_2019_9572_MOESM3_ESM_tw.txt"
+
 pan_ancestry_file <- "../data/raw/Files\ for\ retman/all_pops_non_eur_pruned_within_pop_pc_covs.tsv"
 pa_bridge_file <- "../data/raw/ukb8343bridge31063.txt"
 sample_exclusion_file <- "../data/raw/w8343_20220222.csv"
