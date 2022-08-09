@@ -1,7 +1,7 @@
 # Parse command-line argument(s) -----------------------------------------------
 
 args <- commandArgs(trailingOnly=TRUE)
-tag <- if (!is.null(args[[1]])) args[[1]] else "test"  # Usually should be the date in YYYYMMDD format
+tag <- ifelse(is.na(args[1]), "test", args[1]) # Usually should be the date in YYYYMMDD format
 
 # Input filenames --------------------------------------------------------------
 
@@ -46,8 +46,7 @@ blood_assays_df <- fread(blood_assays_file, nrows=10000, data.table=FALSE) %>%
   filter(eid %in% valid_ids)
 urine_assays_df <- fread(urine_assays_file, nrows=10000, data.table=FALSE) %>%
   filter(eid %in% valid_ids)
-med_atc_df <- fread(med_atc_file, data.table=FALSE) %>%
-  filter(eid %in% valid_ids)
+med_atc_df <- fread(med_atc_file, data.table=FALSE) 
 
 # Covariates -------------------------------------------------------------------
 
@@ -67,50 +66,77 @@ basic_covar_df <- basic_phenos_df %>%
     ethnicity = ifelse(ethnicity %in% c(-1, -3), NA, ethnicity)
   )
 
-genetic_covar_df <- pa_bridge_df %>% 
-  rename(id="V1", s="V2") %>%
-  left_join(pan_ancestry_df, by="s") %>% 
-  select(id, pop, related, contains("PC")) %>% 
+genetic_covar_df <- pan_ancestry_df %>%
+  select(id, pop, related, contains("PC")) %>%
   rename_with(function(nm) sub("^PC", "gPC", nm))
 
 covar_df <- left_join(basic_covar_df, genetic_covar_df, by="id")
 
 # Exposures --------------------------------------------------------------------
 
+# Not currently calculating qCPD or dPY25 since they were removed from the analysis plans
+# Analysis plan states to exclude current smokers with CPD or PY = 0 (they are set to NA below)
 smoking_df <- basic_phenos_df %>%
   select(id = eid,
+         age = `21022-0.0`,
          smoker_status = `20116-0.0`,
-         cigs_per_day = `3456-0.0`
+         cigs_per_day = `3456-0.0`,
+         pack_years = `20161-0.0`,
+         age_start_smoking = `3436-0.0`,
+         age_stop_smoking = `2897-0.0`, # age stopped smoking cigarettes
+         ever_stop_6mo = `2907-0.0`,
+         ever_try_stop = `3486-0.0`
         ) %>%
   mutate(cursmk = ifelse(is.na(smoker_status) | smoker_status == -3, NA,
                          ifelse(smoker_status == 2, 1, 0)),
-         cigs_per_day = ifelse(cigs_per_day %in% c(-1, -3, -10), NA, cigs_per_day), # -10 = < 1 per day
-         pack_years = cigs_per_day * 365 / 20,
-         qcpd = cigs_per_day, # properly define with resids from adjusted model
-         dpy25 = pack_years # properly define with resids from adjusted model
+         cpd = ifelse(cigs_per_day %in% c(-1, -3, -10, 0), NA, cigs_per_day), # -10 = < 1 per day
+         py = ifelse(pack_years %in% c(-1, -3, -10, 0), NA, pack_years)
         ) %>%
-  select(id, cursmk, qcpd, dpy25)
+  select(id, cursmk, cpd, py)
 
 alcohol_df <- basic_phenos_df %>%
   select(id = eid,
+         sex = `31-0.0`,  # Self-reported; 0=Female, 1=Male
          drinker_status = `20117-0.0`,
          n_wk_beer = `1588-0.0`,
          n_wk_wine_red = `1568-0.0`,
          n_wk_wine_wht_chm = `1578-0.0`,
          n_wk_wine_fort = `1608-0.0`,
-         n_wk_spirits = `1598-0.0`
+         n_wk_spirits = `1598-0.0`,
+         n_wk_other = `5364-0.0`
         ) %>%
-  mutate(n_wk_beer = ifelse(n_wk_beer %in% c(-1, -3), NA, n_wk_beer),
-         n_wk_wine_red = ifelse(n_wk_wine_red %in% c(-1, -3), NA, n_wk_wine_red),
-         n_wk_wine_wht_chm = ifelse(n_wk_wine_wht_chm %in% c(-1, -3), NA, n_wk_wine_wht_chm),
-         n_wk_wine_fort = ifelse(n_wk_wine_fort %in% c(-1, -3), NA, n_wk_wine_fort),
-         n_wk_spirits = ifelse(n_wk_spirits %in% c(-1, -3), NA, n_wk_spirits),
-         curdrk = ifelse(is.na(drinker_status) | drinker_status == -3, NA,
+  mutate(sex = 1 - sex, # Switch coding to 0=Male, 1=Female
+         n_wk_beer = ifelse(is.na(n_wk_beer) | n_wk_beer %in% c(-1, -3), 0, n_wk_beer),
+         n_wk_wine_red = ifelse(is.na(n_wk_wine_red) | n_wk_wine_red %in% c(-1, -3), 0, n_wk_wine_red),
+         n_wk_wine_wht_chm = ifelse(is.na(n_wk_wine_wht_chm) | n_wk_wine_wht_chm %in% c(-1, -3), 0, n_wk_wine_wht_chm),
+         n_wk_wine_fort = ifelse(is.na(n_wk_wine_fort) | n_wk_wine_fort %in% c(-1, -3), 0, n_wk_wine_fort),
+         n_wk_spirits = ifelse(is.na(n_wk_spirits) | n_wk_spirits %in% c(-1, -3), 0, n_wk_spirits),
+         n_wk_other = ifelse(is.na(n_wk_other) | n_wk_other %in% c(-1, -3), 0, n_wk_other),
+         curdrink = ifelse(is.na(drinker_status) | drinker_status == -3, NA,
                            ifelse(drinker_status == 2, 1, 0)),
+         never = ifelse(!is.na(drinker_status) & drinker_status == 0, 1, 0),
+         total_alc_uk = (n_wk_beer * 16 +
+                         n_wk_wine_red *16.8 +
+                         n_wk_wine_wht_chm * 16.8 +
+                         n_wk_wine_fort * 14.08 +
+                         n_wk_spirits * 8 +
+                         n_wk_other * 12),
+         drinks_per_week = total_alc_uk / 14 # Weekly total US standard measure = Weekly total UK g of alcohol / 14 g per measure
         ) %>%
-  rowwise() %>% mutate(drinks_per_week = sum(n_wk_beer, n_wk_wine_red, n_wk_wine_wht_chm, n_wk_wine_fort, n_wk_spirits, na.rm=T)) %>%
-  mutate(drinks_per_week = ifelse(is.na(curdrk) | curdrk == 0, NA, drinks_per_week)) %>%
-  select(id, curdrk, drinks_per_week)
+  mutate(drinks_per_week = ifelse(is.na(curdrink) | curdrink == 0, NA, drinks_per_week),
+         light = ifelse(!is.na(curdrink) & curdrink == 1 &
+                        ((sex == 0 & drinks_per_week <= 14) |
+                         (sex == 1 & drinks_per_week <= 7)), 1, 0),
+         heavy = ifelse(!is.na(curdrink) & curdrink == 1 &
+                        ((sex == 0 & drinks_per_week > 14) |
+                         (sex == 1 & drinks_per_week > 7)), 1, 0),
+         very_heavy = ifelse(!is.na(curdrink) & curdrink == 1 &
+                             ((sex == 0 & drinks_per_week > mean(drinks_per_week[sex==0],na.rm=TRUE) + 6*sd(drinks_per_week[sex==0],na.rm=TRUE)) |
+                              (sex == 1 & drinks_per_week > mean(drinks_per_week[sex==1],na.rm=TRUE) + 6*sd(drinks_per_week[sex==1],na.rm=TRUE))), 1, 0),
+         heavy_vs_light = ifelse(is.na(curdrink) | curdrink==0 | very_heavy, NA, ifelse(heavy, 1, 0)),
+         light_vs_never = ifelse(!never & !light, NA, ifelse(light, 1, 0)),
+         heavy_vs_not = ifelse(very_heavy, NA, ifelse(heavy, 1, 0))) %>%
+  select(id, curdrink, heavy_vs_light, light_vs_never, heavy_vs_not)
 
 sleep_df <- basic_phenos_df %>%
   select(
@@ -225,6 +251,12 @@ outcome_df <- full_join(
 final_pheno_df <- covar_df %>%
   left_join(exposure_df, by="id") %>%
   left_join(outcome_df, by="id")
+
+# Code not working
+## winsorize CPD and PY by population and sex now that exposure and covar data are merged
+#final_pheno_df %>%
+#  group_by(pop, sex) %>%
+#  mutate(across(c(cpd, py)), winsorize)
 
 pheno_filename <- paste0("ukb_phenos_", tag, ".csv")
 write_csv(final_pheno_df, pheno_filename)
