@@ -89,7 +89,7 @@ smoking_df <- basic_phenos_df %>%
         ) %>%
   mutate(cursmk = ifelse(is.na(smoker_status) | smoker_status == -3, NA,
                          ifelse(smoker_status == 2, 1, 0)),
-         cpd = ifelse(cigs_per_day %in% c(-1, -3, -10, 0), NA, cigs_per_day), # -10 = < 1 per day
+         cpd = as.numeric(ifelse(cigs_per_day %in% c(-1, -3, -10, 0), NA, cigs_per_day)), # -10 = < 1 per day
          py = ifelse(pack_years %in% c(-1, -3, -10, 0), NA, pack_years)
         ) %>%
   select(id, cursmk, cpd, py)
@@ -252,11 +252,10 @@ final_pheno_df <- covar_df %>%
   left_join(exposure_df, by="id") %>%
   left_join(outcome_df, by="id")
 
-# Code not working
 ## winsorize CPD and PY by population and sex now that exposure and covar data are merged
-#final_pheno_df %>%
-#  group_by(pop, sex) %>%
-#  mutate(across(c(cpd, py)), winsorize)
+final_pheno_df <- final_pheno_df %>%
+  group_by(pop, sex) %>%
+  mutate(across(c(cpd, py), winsorize))
 
 pheno_filename <- paste0("ukb_phenos_", tag, ".csv")
 write_csv(final_pheno_df, pheno_filename)
