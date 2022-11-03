@@ -8,6 +8,7 @@ tag <- ifelse(is.na(args[1]), "test", args[1]) # Usually should be the date in Y
 basic_phenos_file <- "../data/raw/ukb47880.csv"
 blood_assays_file <- "../data/raw/ukb51002.csv"
 urine_assays_file <- "../data/raw/ukb50582.csv"
+pack_years_file <- "../data/raw/ukb668908.csv"
 
 med_atc_file <- "../data/raw/wu_et_al/41467_2019_9572_MOESM3_ESM_tw.txt"
 med_atc_file <- "../data/raw/41467_2019_9572_MOESM3_ESM_tw.txt"
@@ -40,7 +41,9 @@ sample_exclusions <- readLines(sample_exclusion_file)  # Participants who revoke
 
 valid_ids <- setdiff(pan_ancestry_df$id, sample_exclusions)  # Participants with genetics but not having revoked consent
 
-basic_phenos_df <- fread(basic_phenos_file, nrows=10000, data.table=FALSE) %>%
+pack_years_df <- fread(pack_years_file, nrows=10000, data.table=FALSE) # Load pack years first to merge into basic pheno data
+basic_phenos_df <- fread(basic_phenos_file, nrows=Inf, data.table=FALSE) %>%
+  left_join(pack_years_df, by="eid") %>%
   filter(eid %in% valid_ids)
 blood_assays_df <- fread(blood_assays_file, nrows=10000, data.table=FALSE) %>%
   filter(eid %in% valid_ids)
@@ -89,8 +92,8 @@ smoking_df <- basic_phenos_df %>%
         ) %>%
   mutate(cursmk = ifelse(is.na(smoker_status) | smoker_status == -3, NA,
                          ifelse(smoker_status == 2, 1, 0)),
-         cpd = as.numeric(ifelse(cigs_per_day %in% c(-1, -3, -10, 0), NA, cigs_per_day)), # -10 = < 1 per day
-         py = ifelse(pack_years %in% c(-1, -3, -10, 0), NA, pack_years)
+         cpd = as.numeric(ifelse((cigs_per_day %in% c(-1, -3, -10, 0)) | is.na(cursmk) | cursmk==0, NA, cigs_per_day)), # -10 = < 1 per day
+         py = ifelse((pack_years %in% c(-1, -3, -10, 0)) | is.na(cursmk) | cursmk==0, NA, pack_years)
         ) %>%
   select(id, cursmk, cpd, py)
 
