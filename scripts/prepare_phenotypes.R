@@ -138,8 +138,8 @@ alcohol_df <- basic_phenos_df %>%
                               (sex == 1 & drinks_per_week > mean(drinks_per_week[sex==1],na.rm=TRUE) + 6*sd(drinks_per_week[sex==1],na.rm=TRUE))), 1, 0),
          heavy_vs_light = ifelse(is.na(curdrink) | curdrink==0 | very_heavy, NA, ifelse(heavy, 1, 0)),
          light_vs_never = ifelse(!never & !light, NA, ifelse(light, 1, 0)),
-         heavy_vs_not = ifelse(very_heavy, NA, ifelse(heavy, 1, 0))) %>%
-  select(id, curdrink, heavy_vs_light, light_vs_never, heavy_vs_not)
+         heavy_vs_never = ifelse(!never & !heavy, NA, ifelse(heavy, 1, 0))) %>%
+  select(id, curdrink, heavy_vs_light, light_vs_never, heavy_vs_never)
 
 sleep_df <- basic_phenos_df %>%
   select(
