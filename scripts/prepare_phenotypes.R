@@ -9,6 +9,7 @@ basic_phenos_file <- "../data/raw/ukb47880.csv"
 blood_assays_file <- "../data/raw/ukb51002.csv"
 urine_assays_file <- "../data/raw/ukb50582.csv"
 pack_years_file <- "../data/raw/ukb668908.csv"
+pa_met_file <- "../data/raw/ukb669852.csv"
 
 med_atc_file <- "../data/raw/wu_et_al/41467_2019_9572_MOESM3_ESM_tw.txt"
 med_atc_file <- "../data/raw/41467_2019_9572_MOESM3_ESM_tw.txt"
@@ -41,13 +42,16 @@ sample_exclusions <- readLines(sample_exclusion_file)  # Participants who revoke
 
 valid_ids <- setdiff(pan_ancestry_df$id, sample_exclusions)  # Participants with genetics but not having revoked consent
 
-pack_years_df <- fread(pack_years_file, nrows=10000, data.table=FALSE) # Load pack years first to merge into basic pheno data
-basic_phenos_df <- fread(basic_phenos_file, nrows=Inf, data.table=FALSE) %>%
+pack_years_df <- fread(pack_years_file, data.table=FALSE) # Load pack years first to merge into basic pheno data
+pa_met_df <- fread(pa_met_file, data.table=FALSE) # Load met first to merge into basic pheno data
+basic_phenos_df <- fread(basic_phenos_file, data.table=FALSE) %>%
   left_join(pack_years_df, by="eid") %>%
+  left_join(pa_met_df, by="eid") %>%
+  rename('90016-0.0' = '90016-0.0.y') %>%
   filter(eid %in% valid_ids)
-blood_assays_df <- fread(blood_assays_file, nrows=10000, data.table=FALSE) %>%
+blood_assays_df <- fread(blood_assays_file, data.table=FALSE) %>%
   filter(eid %in% valid_ids)
-urine_assays_df <- fread(urine_assays_file, nrows=10000, data.table=FALSE) %>%
+urine_assays_df <- fread(urine_assays_file, data.table=FALSE) %>%
   filter(eid %in% valid_ids)
 med_atc_df <- fread(med_atc_file, data.table=FALSE) 
 
@@ -161,7 +165,40 @@ depression_df <- basic_phenos_df %>%
   select(id = eid)
 
 pa_df <- basic_phenos_df %>%
-  select(id = eid)
+  select(
+      id = eid,
+	  ipaq_met = `22040-0.0`, 
+	  walking_pleasure_frq = `971-0.0`, walking_pleasure_dur = `981-0.0`, 
+	  strenuous_sport_frq = `991-0.0`, strenuous_sport_dur = `1001-0.0`, 
+	  heavy_diy_frq = `2624-0.0`, heavy_diy_dur = `2634-0.0`, 
+	  other_excercise_frq = `3637-0.0`, other_excercise_dur = `3647-0.0`, 
+	  contains("6164-0."),
+	  accel_avg = `90012-0.0`,
+	  accel_qc_good_wear_time = `90015-0.0`,
+	  accel_qc_good_calib = `90016-0.0`
+	  ) %>% 
+  mutate(ipaq_met_p25_01 = ifelse(ipaq_met <= quantile(ipaq_met,0.25,na.rm=T), 0, 1)) %>%
+  mutate(walking_pleasure_frq = ifelse(walking_pleasure_frq<0 | is.na(walking_pleasure_frq), 0 ,walking_pleasure_frq), # set neagatives and missings to 0
+         walking_pleasure_dur = ifelse(walking_pleasure_dur<0 | is.na(walking_pleasure_dur), 0 ,walking_pleasure_dur),
+		 strenuous_sport_frq = ifelse(strenuous_sport_frq<0 | is.na(strenuous_sport_frq), 0 ,strenuous_sport_frq),
+         strenuous_sport_dur = ifelse(strenuous_sport_dur<0 | is.na(strenuous_sport_dur), 0 ,strenuous_sport_dur),
+		 heavy_diy_frq = ifelse(heavy_diy_frq<0 | is.na(heavy_diy_frq), 0 ,heavy_diy_frq),
+         heavy_diy_dur = ifelse(heavy_diy_dur<0 | is.na(heavy_diy_dur), 0 ,heavy_diy_dur),
+		 other_excercise_frq = ifelse(other_excercise_frq<0 | is.na(other_excercise_frq), 0 ,other_excercise_frq),
+         other_excercise_dur = ifelse(other_excercise_dur<0 | is.na(other_excercise_dur), 0 ,other_excercise_dur),
+	  ) %>%
+  mutate(rpaq_met = 3.3*walking_pleasure_frq*walking_pleasure_dur + 
+                    8*strenuous_sport_frq*strenuous_sport_dur + 
+					4.5*heavy_diy_frq*heavy_diy_dur + 
+					4.5*other_excercise_frq*other_excercise_dur
+      ) %>%
+  mutate(pa_any = apply(.[, paste0("6164-0.", 0:4)],1,function(x) any(x%in%c(1,2,3,5)))) %>% # exclude any 0's from above that indicated any PA in variable 6164
+  mutate(rpaq_met = ifelse(pa_any & rpaq_met == 0, NA, rpaq_met)) %>% 
+  mutate(rpaq_met_p25_01 = ifelse(rpaq_met <= quantile(rpaq_met,0.25,na.rm=T), 0, 1)) %>%
+  mutate(accel_avg = ifelse(accel_qc_good_wear_time==0 | accel_qc_good_calib==0, NA, accel_avg)) %>%
+  mutate(accel_avg_p25_01 = ifelse(accel_avg <= quantile(accel_avg,0.25,na.rm=T), 0, 1)) %>% 
+  select(id, ipaq_met, ipaq_met_p25_01, rpaq_met, rpaq_met_p25_01, accel_avg, accel_avg_p25_01)
+ 
 
 education_df <- basic_phenos_df %>%
   select(id = eid)
@@ -211,6 +248,19 @@ bp_df <- basic_phenos_df %>%
   mutate(across(c(dbp, sbp, pp), winsorize)) %>%
   select(id, dbp, sbp, pp, bp_med)
 
+obesity_df <- basic_phenos_df %>%
+  select(
+    id = eid,
+    bmi_wins = `21001-0.0`, waist = `48-0.0`,
+    hip = `49-0.0`, pregnant = `3140-0.0`
+  ) %>%
+  mutate(
+    whr_wins = waist / hip
+  ) %>%
+  mutate(across(c(bmi_wins, whr_wins), winsorize)) %>%
+  filter(pregnant==0 | is.na(pregnant)) %>%
+  select(id, bmi_wins, whr_wins)
+
 ukb_biomarker_fields <- c(
   chol = 30690, glu = 30740, glu_date = 30741, 
   hba1c = 30750, hdl = 30760, ldl = 30780,
@@ -243,11 +293,9 @@ lipids_df <- biomarker_df %>%
   mutate(across(c(hdl, tg, ldl), winsorize)) %>%
   select(id, hdl, tg, ldl, hdl_orig, tg_orig, ldl_orig, chol_med, fasting_status)
   
-outcome_df <- full_join(
-  bp_df, 
-  lipids_df,
-  by="id"
-)
+outcome_df <- bp_df %>% 
+  full_join(lipids_df,by="id") %>%
+  full_join(obesity_df,by="id")
 
 # Final processing -------------------------------------------------------------
 
