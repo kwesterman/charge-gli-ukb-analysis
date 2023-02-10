@@ -12,22 +12,25 @@ out.file <- ""
 stats <- c("sex", "chol_med", "age", "hdl_orig", "hdl", "tg_orig", "tg", "ldl")
 
 # list the dichotomous lifestyle variables here to stratify the statistics
-lifestyle.vars <- c("stst", "ltst") # if set to 'c()', data will not be stratified
+lifestyle.vars <- c("curdrink", "heavy_vs_light", "heavy_vs_never", "light_vs_never") # if set to 'c()', data will not be stratified
+
+# list the quantitative lifestyle variables here for a separate table
+quantitative.vars <- c() # c("cpd", "py") # if set to 'c()', table will not be written
 
 # Load data
 d <- fread(pheno.file, data.table=FALSE)
 
 get.stats <- function(dat, stats) {
-    out <- data.frame(Variable=stats, N=NA, Mean=NA, SD=NA, 
+    out <- data.frame(Variable=stats, Env=dat$Env[1], Stratum=dat$Stratum[1], N=NA, Mean=NA, SD=NA, 
 		      Median=NA, Min=NA, Max=NA, stringsAsFactors=FALSE)
     for (v in stats) {
 	i <- which(stats==v)
 	x <- na.omit(dat[,v])
         if (all(x %in% c(0,1))) {
-	    out$N[i] <- sum(x)
+	    out$N[i] <- as.numeric(sum(x)) # avoid warning message later about type coercion
 	    out$Mean[i] <- mean(x)
 	} else {
-	    out$N[i] <- length(x)
+	    out$N[i] <- as.numeric(length(x)) # avoid warning message later about type coercion
 	    out$Mean[i] <- mean(x)
 	    out$SD[i] <- sd(x)
 	    out$Median[i] <- median(x)
@@ -43,24 +46,28 @@ group.levels <- names(sort(table(d$pop), decreasing=TRUE))
 
 # helper function to prepare data
 list.strata <- function(df, vars) {
-	n.strata <- length(vars)*2 + 1
+	n.strata <- length(vars)*3
 	if (n.strata == 1) {
 		# If no variables to stratify return full non-missing data
+		df$Env <- ""
+		df$Stratum <- ""
 		return(df[!is.na(df$gPC1),])
 	} else {
 		res <- vector(mode="list", length=n.strata)
 		res.i <- 1
-		# first strata are each lifestyle variable (2 levels)
+		# Each lifestyle variable has 3 levels: E0, E1, and Total
 		for (v in vars) {
-		    for (i in c(1,0)) {
-			res[[res.i]] <- df[df$related==FALSE & !is.na(df$gPC1) & !is.na(df[,v]) & df[,v]==i, ]
+		    df$Env <- sub("_VS_", "vs", toupper(v))
+		    for (i in c(0:2)) {
+			df$Stratum <- c("E0","E1","Total")[i+1]
+			if (i != 2) {
+			    res[[res.i]] <- df[df$related==FALSE & !is.na(df$gPC1) & !is.na(df[,v]) & df[,v]==i, ]
+		    	} else {
+			    res[[res.i]] <- df[df$related==FALSE & !is.na(df$gPC1) & !is.na(df[,v]), ]
+			}
 			res.i <- res.i+1
 		    }
 		}
-		# final stratum is the 'total' group
-		# using eval(parse(str)) to account for varying numbers of lifestyle variables
-		str <- paste0("df[df$related==FALSE & !is.na(df$gPC1) & (", paste0("!is.na(df$",vars,")", collapse=" | "), "),]")
-		res[[res.i]] <- eval(parse(text=str))
 		return(res)
 	}
 }
@@ -71,30 +78,61 @@ stats.list.by.group <-
 		      function(g) {
 			# collect statistics for each lifestyle trait variable and all samples
 			x <- d[d$pop == g,]
-			stats.list <- lapply(list.strata(x, lifestyle.vars),
-			                     function(dat) get.stats(dat, stats))
+			stats.table.unformatted <- do.call("rbind", 
+							lapply(list.strata(x, lifestyle.vars),
+			                     		    function(dat) get.stats(dat, stats)))
 
-			# label each table in the list before combining
-			if (length(lifestyle.vars)>0) {
-				prefixes <- c(paste0(rep(toupper(lifestyle.vars),each=2),c("1.","0.")), "ALL.")
-			} else {
-				prefixes <- "ALL."
-			}
-			for (i in 1:length(stats.list)) {
-			    names(stats.list[[i]])[-1] <- paste0(prefixes[i], names(stats.list[[i]])[-1])
-			}
-				
-			# combine tables in the style of the analysis plan descriptive statistics table
-			stats.table <- Reduce(function(x,y) merge(x, y, by="Variable", sort=FALSE), stats.list)
-			stats.table <- cbind(Group=rep(g, nrow(stats.table)), stats.table)
-			return(stats.table)
+			stats.table.long <- melt(as.data.table(stats.table.unformatted), 
+						 id.vars=names(stats.table.unformatted)[1:3], 
+						 measure.vars=names(stats.table.unformatted)[4:9], 
+						 variable.name="Stat")
+
+			stats.table.wide <- dcast(stats.table.long, Variable + Env ~ Stratum + Stat)
+			stats.table.wide[,Group:=g]
+			stats.table.wide[,Variable:=factor(Variable, levels=stats)]
+			e1.var <- grep("^E1", names(stats.table.wide), value=T)
+			e0.var <- grep("^E0", names(stats.table.wide), value=T)
+			total.var <- grep("^Total", names(stats.table.wide), value=T)
+			setcolorder(stats.table.wide, c("Group", "Variable", "Env", e1.var, e0.var, total.var))
+			return(stats.table.wide)
 	      })
 
 # combine all the individual tables together
 out.table <- do.call("rbind", stats.list.by.group)
+setorder(out.table, Env, Group, Variable)
 
 # save the data
 if (out.file == "") out.file <- sub(".csv$", "_statistics.csv", pheno.file)
-write.csv(out.table, out.file, row.names=F)
+fwrite(out.table, out.file, quote=F, na="NA")
 
+# do the same sort of thing for the quantitative variables
+if (length(quantitative.vars) > 0) {
+    qnt.list.by.group <- 
+	    lapply(group.levels,
+		   function(g) {
+			# collect statistics for each quantitative variable and all samples
+                        x <- d[d$pop == g,]
+		        stats.list <- list(get.stats(x, quantitative.vars), # all
+					   get.stats(x[x$sex==0,], quantitative.vars), # male
+					   get.stats(x[x$sex==1,], quantitative.vars)) # female
+			for(i in 1:length(stats.list)) {
+			    stats.list[[i]]$Variable <- toupper(stats.list[[i]]$Variable)
+			    if(i==2) stats.list[[i]]$Variable <- paste0(stats.list[[i]]$Variable, "m")
+			    if(i==3) stats.list[[i]]$Variable <- paste0(stats.list[[i]]$Variable, "f")
+			}
+
+                        # combine tables in the style of the analysis plan quantitative statistics table
+                        stats.table <- do.call("rbind", stats.list)
+                        stats.table <- cbind(Group=rep(g, nrow(stats.table)), stats.table)
+                        return(stats.table[order(stats.table$Variable),])
+              })
+    # combine and save the data
+    qnt.table <- do.call("rbind", qnt.list.by.group)
+    if (out.file == "") {
+	qnt.file <- sub(".csv$", "_statistics_qnt.csv", pheno.file)
+    } else {
+	qnt.file <- sub(".csv$", "_qnt.csv", out.file)
+    }
+    write.csv(qnt.table, qnt.file, row.names=F)
+}
 
