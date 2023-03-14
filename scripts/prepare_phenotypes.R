@@ -132,17 +132,18 @@ alcohol_df <- basic_phenos_df %>%
   ) %>%
   mutate(drinks_per_week = ifelse(is.na(curdrink) | curdrink == 0, NA, drinks_per_week),
          light = ifelse(!is.na(curdrink) & curdrink == 1 &
-                          ((sex == 0 & drinks_per_week <= 14) |
-                             (sex == 1 & drinks_per_week <= 7)), 1, 0),
+                        ((sex == 0 & drinks_per_week <= 14) |
+                         (sex == 1 & drinks_per_week <= 7)), 1, 0),
          heavy = ifelse(!is.na(curdrink) & curdrink == 1 &
-                          ((sex == 0 & drinks_per_week > 14) |
-                             (sex == 1 & drinks_per_week > 7)), 1, 0),
+                        ((sex == 0 & drinks_per_week > 14) |
+                         (sex == 1 & drinks_per_week > 7)), 1, 0),
          very_heavy = ifelse(!is.na(curdrink) & curdrink == 1 &
-                               ((sex == 0 & drinks_per_week > mean(drinks_per_week[sex==0],na.rm=TRUE) + 6*sd(drinks_per_week[sex==0],na.rm=TRUE)) |
-                                  (sex == 1 & drinks_per_week > mean(drinks_per_week[sex==1],na.rm=TRUE) + 6*sd(drinks_per_week[sex==1],na.rm=TRUE))), 1, 0),
-         heavy_vs_light = ifelse(is.na(curdrink) | curdrink==0 | very_heavy, NA, ifelse(heavy, 1, 0)),
-         light_vs_never = ifelse(!never & !light, NA, ifelse(light, 1, 0)),
-         heavy_vs_never = ifelse(!never & !heavy, NA, ifelse(heavy, 1, 0))) %>%
+                             ((sex == 0 & drinks_per_week > mean(drinks_per_week[sex==0],na.rm=TRUE) + 6*sd(drinks_per_week[sex==0],na.rm=TRUE)) |
+                              (sex == 1 & drinks_per_week > mean(drinks_per_week[sex==1],na.rm=TRUE) + 6*sd(drinks_per_week[sex==1],na.rm=TRUE))), 1, 0),
+	 heavy_vs_light = ifelse(is.na(curdrink) | curdrink==0 | very_heavy, NA, ifelse(heavy, 1, 0)),
+         light_vs_never = ifelse((!never & !light) | very_heavy, NA, ifelse(light, 1, 0)),
+         heavy_vs_never = ifelse((!never & !heavy) | very_heavy, NA, ifelse(heavy, 1, 0)),
+         curdrink = ifelse(very_heavy, NA, curdrink)) %>%
   select(id, curdrink, heavy_vs_light, light_vs_never, heavy_vs_never)
 
 sleep_df <- basic_phenos_df %>%
