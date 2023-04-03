@@ -286,3 +286,14 @@ df_final = df[, subset_cols]
 
 saveRDS(df_final, "depression_intermediate_df.rds")
 
+###################################
+### following function filters, residualizes and scales to calcuate the qDEPR value
+##################################
+calculate_qDEPR <- function(df, y) {
+  qDEPR_mask <- (df$has_mhq == 1) & (df$has_psychosis0 == 0)
+  lm_str <- paste0(y, " ~ sex * age")
+  lm_fit <- lm(as.formula(lm_str), data=df[qDEPR_mask, ], na.action=na.exclude)
+  df$qDEPR <- NA
+  df$qDEPR[qDEPR_mask] <- as.vector(scale(resid(lm_fit)))
+  df
+}

@@ -162,12 +162,17 @@ sleep_df <- sleep_df %>%
          ltst = as.integer(sleep_dur_resid >= quantile(sleep_dur_resid, 0.8))) %>%
   select(id, sleep_dur_resid, stst, ltst)
 
-source("depression_phenotypes.R")
-depression_df <- readRDS("depression_intermediate_df.rds") %>%
+source("depression_phenotyping.R")
+depression_df <- readRDS("depression_intermediate_df.rds") %>% 
+  inner_join(select(basic_phenos_df,`21022-0.0`, eid, `31-0.0`), by=c("f.eid"="eid")) %>% 
+  inner_join(select(pan_ancestry_df, pop, id), by=c("f.eid"="id"))%>%
+  filter(f.eid %in% valid_ids)%>%
+  rename(age = '21022-0.0', 
+         sex = '31-0.0') %>%
   mutate(
     dDEPR_MHQ = case_when(
       (has_mhq == 1) & (has_psychosis0 == 0) & 
-        ((MHQ_depression_core_0 == 1) & (MHQ_threshold_score_0 == 1) & (MHQ_symptoms_for_atleast_5days_0 >= 5)) ~ 1,
+        (PHQ_score >= 10) ~ 1,
       (has_mhq == 1) & (has_psychosis0 == 0) ~ 0,
       TRUE ~ as.numeric(NA)
     ),
@@ -178,19 +183,25 @@ depression_df <- readRDS("depression_intermediate_df.rds") %>%
            derived_repeat_moderate_md_0 | derived_repeat_severe_md_0) ~ 1,
       (has_mhq == 0) & (has_psychosis0 == 0) ~ 0,
       TRUE ~ as.numeric(NA)
-    ),
-    qDEPR = case_when(
-      (has_mhq == 1) & (has_psychosis0 == 0) ~ as.numeric(PHQ_score >= 10),
-      TRUE ~ as.numeric(NA)
-    )
+    ) 	
   ) %>%
   mutate(dDEPR = case_when(
     !is.na(dDEPR_MHQ) ~ dDEPR_MHQ,
     !is.na(dDEPR_nonMHQ) ~ dDEPR_nonMHQ,
     TRUE ~ as.numeric(NA)
-  )) %>%
-  select(id=f.eid, dDEPR_MHQ, dDEPR_nonMHQ, dDEPR, qDEPR)
-
+  )) %>%  
+  group_by(pop) %>%
+  mutate(PHQ_score = winsorize(PHQ_score)) %>%
+  nest() %>%
+  rowwise() %>%
+  mutate(
+    data2 = list(calculate_qDEPR(data, "PHQ_score"))
+  ) %>%
+ unnest(data2) %>%
+ ungroup() %>%
+ select(id=f.eid, dDEPR_MHQ, dDEPR_nonMHQ, dDEPR, qDEPR)
+ 
+  
 pa_df <- basic_phenos_df %>%
   select(
     id = eid,
