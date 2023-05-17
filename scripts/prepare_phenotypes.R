@@ -154,12 +154,17 @@ sleep_df <- basic_phenos_df %>%
     sleep_dur = `1160-0.0`
   ) %>%
   mutate(sleep_dur = ifelse(sleep_dur %in% c(-1, -3), NA, sleep_dur)) %>%
-  filter(!is.na(sleep_dur))
+  filter(!is.na(sleep_dur)) %>%
+  inner_join(select(pan_ancestry_df, pop, id), by=c("id")) %>%
+  filter(id %in% valid_ids) %>%
+  filter(!duplicated(id))
 
-sleep_df$sleep_dur_resid <- resid(lm(sleep_dur ~ sex * age, data=sleep_df))
 sleep_df <- sleep_df %>%
+  group_by(pop) %>%
+  mutate(sleep_dur_resid = resid(lm(sleep_dur ~ sex * age))) %>% 
   mutate(stst = as.integer(sleep_dur_resid <= quantile(sleep_dur_resid, 0.2)),
          ltst = as.integer(sleep_dur_resid >= quantile(sleep_dur_resid, 0.8))) %>%
+  ungroup() %>%
   select(id, sleep_dur_resid, stst, ltst)
 
 source("depression_phenotyping.R")
