@@ -210,6 +210,7 @@ depression_df <- readRDS("depression_intermediate_df.rds") %>%
 pa_df <- basic_phenos_df %>%
   select(
     id = eid,
+	sex = `31-0.0`,
     ipaq_met = `22040-0.0`, 
     walking_pleasure_frq = `971-0.0`, walking_pleasure_dur = `981-0.0`,
     strenuous_sport_frq = `991-0.0`, strenuous_sport_dur = `1001-0.0`, 
