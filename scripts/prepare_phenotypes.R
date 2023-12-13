@@ -220,7 +220,8 @@ pa_df <- basic_phenos_df %>%
     accel_qc_good_wear_time = `90015-0.0`,
     accel_qc_good_calib = `90016-0.0`
   ) %>% 
-  mutate(ipaq_met_p25_01 = ifelse(ipaq_met <= quantile(ipaq_met,0.25,na.rm=T), 0, 1)) %>%
+  mutate(ipaq_met_p30_01 = ifelse((sex == 0 & ipaq_met > quantile(ipaq_met[sex==0],0.30,na.rm=T)) | 
+								   (sex == 1 & ipaq_met > quantile(ipaq_met[sex==1],0.30,na.rm=T)), 1, 0)) %>%
   mutate(walking_pleasure_frq = ifelse(walking_pleasure_frq<0 | is.na(walking_pleasure_frq), 0 ,walking_pleasure_frq), # set neagatives and missings to 0
          walking_pleasure_dur = ifelse(walking_pleasure_dur<0 | is.na(walking_pleasure_dur), 0 ,walking_pleasure_dur),
          strenuous_sport_frq = ifelse(strenuous_sport_frq<0 | is.na(strenuous_sport_frq), 0 ,strenuous_sport_frq),
@@ -237,10 +238,13 @@ pa_df <- basic_phenos_df %>%
   ) %>%
   mutate(pa_any = apply(.[, paste0("6164-0.", 0:4)],1,function(x) any(x%in%c(1,2,3,5)))) %>% # exclude any 0's from above that indicated any PA in variable 6164
   mutate(rpaq_met = ifelse(pa_any & rpaq_met == 0, NA, rpaq_met)) %>% 
-  mutate(rpaq_met_p25_01 = ifelse(rpaq_met <= quantile(rpaq_met,0.25,na.rm=T), 0, 1)) %>%
+  mutate(rpaq_met_p30_01 = ifelse((sex == 0 & rpaq_met > quantile(rpaq_met[sex==0],0.30,na.rm=T)) | 
+								   (sex == 1 & rpaq_met > quantile(rpaq_met[sex==1],0.30,na.rm=T)), 1, 0)) %>%
   mutate(accel_avg = ifelse(accel_qc_good_wear_time==0 | accel_qc_good_calib==0, NA, accel_avg)) %>%
-  mutate(accel_avg_p25_01 = ifelse(accel_avg <= quantile(accel_avg,0.25,na.rm=T), 0, 1)) %>% 
-  select(id, ipaq_met, ipaq_met_p25_01, rpaq_met, rpaq_met_p25_01, accel_avg, accel_avg_p25_01)
+  mutate(accel_avg_p30_01 = ifelse((sex == 0 & accel_avg > quantile(accel_avg[sex==0],0.30,na.rm=T)) | 
+								   (sex == 1 & accel_avg > quantile(accel_avg[sex==1],0.30,na.rm=T)), 1, 0)) %>%
+  select(id, rpaq_met, rpaq_met_p30_01)
+  # select(id, ipaq_met, ipaq_met_p25_01, rpaq_met, rpaq_met_p25_01, accel_avg, accel_avg_p25_01)
 
 
 education_df <- basic_phenos_df %>%
