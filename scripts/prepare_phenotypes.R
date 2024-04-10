@@ -36,7 +36,8 @@ winsorize <- function(x, SDs=6) {
 
 pa_bridge_df <- fread(pa_bridge_file, col.names=c("id", "s"), data.table=FALSE)
 pan_ancestry_df <- fread(pan_ancestry_file, data.table=FALSE) %>%
-  inner_join(pa_bridge_df, by="s")
+  inner_join(pa_bridge_df, by="s")%>%
+  filter(related == FALSE)
 
 sample_exclusions <- readLines(sample_exclusion_file)  # Participants who revoked consent
 
@@ -247,7 +248,16 @@ pa_df <- basic_phenos_df %>%
   select(id, rpaq_met, rpaq_met_p30_01)
   # select(id, ipaq_met, ipaq_met_p25_01, rpaq_met, rpaq_met_p25_01, accel_avg, accel_avg_p25_01)
 
+source("glycemic_traits.R")
+glycemic_df <-
+  read_csv("ukb_glycemictraits.csv") %>%
+  select(id, hba1c, glucose, fasting_status) %>% rename(glycemic_fasting_status=fasting_status)
 
+source("diabetes.R") # this script doesn't run unless done interactively section by section, sorry
+diabetes_df <-
+  read_csv(paste0("ukb_diabetes.csv")) %>%
+  select(id, diabetes_control, t2d_case, t1d_case)
+			
 education_df <- basic_phenos_df %>%
   select(id = eid)
 
@@ -256,7 +266,9 @@ exposure_df <- smoking_df %>%
   left_join(sleep_df, by="id") %>%
   left_join(depression_df, by="id") %>%
   left_join(pa_df, by="id") %>%
-  left_join(education_df, by="id")
+  left_join(education_df, by="id")%>%
+  left_join(glycemic_df, by = "id") %>%
+  left_join(diabetes_df, by = "id")
 
 # Outcomes ---------------------------------------------------------------------
 
