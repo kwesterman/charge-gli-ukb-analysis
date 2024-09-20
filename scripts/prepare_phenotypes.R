@@ -34,6 +34,12 @@ winsorize <- function(x, SDs=6) {
   )
 }
 
+age_sex_standardize <- function(key_var, sex, age) {
+  lm_fit <- lm(key_var ~ sex * age, na.action = na.exclude)
+  lm_resids <- resid(lm_fit)
+  as.vector(scale(lm_resids))
+}
+
 pa_bridge_df <- fread(pa_bridge_file, col.names=c("id", "s"), data.table=FALSE)
 pan_ancestry_df <- fread(pan_ancestry_file, data.table=FALSE) %>%
   inner_join(pa_bridge_df, by="s")%>%
@@ -247,6 +253,13 @@ pa_df <- basic_phenos_df %>%
 								   (sex == 1 & accel_avg > quantile(accel_avg[sex==1],0.30,na.rm=T)), 1, 0)) %>%
   select(id, rpaq_met, rpaq_met_p30_01)
   # select(id, ipaq_met, ipaq_met_p25_01, rpaq_met, rpaq_met_p25_01, accel_avg, accel_avg_p25_01)
+
+pa_df <- pa_df %>%
+  inner_join(select(covar_df, id, sex, age, pop), by = "id") %>%
+  group_by(pop) %>%
+  mutate(dPA = rpaq_met_p30_01,
+	 rpaq_met_win = winsorize(rpaq_met),
+	 qPA = age_sex_standardize(rpaq_met_win, sex, age))
 
 source("glycemic_traits.R")
 glycemic_df <-
