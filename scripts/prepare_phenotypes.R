@@ -23,8 +23,9 @@ sample_exclusion_file <- "../data/raw/w8343_20220222.csv"
 library(tidyverse)
 library(data.table)
 
-winsorize <- function(x, SDs=6) {
+winsorize <- function(x, SDs = 6, var_name = NULL, pop_name = NULL) {
   bounds <- mean(x, na.rm=TRUE) + c(-1, 1) * SDs * sd(x, na.rm=TRUE)
+  if (!(is.null(var_name) | is.null(pop_name))) print(paste0(var_name, " - ", pop_name, ":"))
   print(paste0(sum(x < bounds[1], na.rm=TRUE), " values winsorized at the lower bound."))
   print(paste0(sum(x > bounds[2], na.rm=TRUE), " values winsorized at the upper bound."))
   case_when(
@@ -259,18 +260,10 @@ pa_df <- pa_df %>%
   group_by(pop) %>%
   mutate(dPA = rpaq_met_p30_01,
 	 rpaq_met_win = winsorize(rpaq_met),
-	 qPA = age_sex_standardize(rpaq_met_win, sex, age))
-
-source("glycemic_traits.R")
-glycemic_df <-
-  read_csv("ukb_glycemictraits.csv") %>%
-  select(id, hba1c, glucose, fasting_status) %>% rename(glycemic_fasting_status=fasting_status)
-
-source("diabetes.R") # this script doesn't run unless done interactively section by section, sorry
-diabetes_df <-
-  read_csv(paste0("ukb_diabetes.csv")) %>%
-  select(id, diabetes_control, t2d_case, t1d_case)
-			
+	 qPA = age_sex_standardize(rpaq_met_win, sex, age)) %>%
+  ungroup() %>%
+  select(id, dPA, qPA)
+	
 education_df <- basic_phenos_df %>%
   select(id = eid)
 
@@ -279,9 +272,7 @@ exposure_df <- smoking_df %>%
   left_join(sleep_df, by="id") %>%
   left_join(depression_df, by="id") %>%
   left_join(pa_df, by="id") %>%
-  left_join(education_df, by="id")%>%
-  left_join(glycemic_df, by = "id") %>%
-  left_join(diabetes_df, by = "id")
+  left_join(education_df, by="id")
 
 # Outcomes ---------------------------------------------------------------------
 
@@ -366,9 +357,31 @@ lipids_df <- biomarker_df %>%
   mutate(across(c(hdl, tg, ldl), winsorize)) %>%
   select(id, hdl, tg, ldl, hdl_orig, tg_orig, ldl_orig, chol_med, fasting_status)
 
+source("diabetes.R")
+diabetes_df <- read_csv("ukb_diabetes.csv") %>%
+  select(id, diabetes_control, t2d_case, t1d_case)
+
+source("glycemic_traits.R")
+glycemic_df <- read_csv("ukb_glycemictraits.csv") %>%
+  select(id, hba1c, glucose, fasting_status) %>% 
+  rename(glycemic_fasting_status = fasting_status) %>%
+  mutate(GL_F = ifelse(glycemic_fasting_status == "F", glucose, NA),
+	 GL_NF = ifelse(glycemic_fasting_status == "NF", glucose, NA)) %>%
+  left_join(diabetes_df, by = "id") %>%
+  mutate(across(c(hba1c, glucose, GL_F, GL_NF), ~ ifelse((t1d_case == 1) | (t2d_case == 1), NA, .x)),  # Set missing for individuals with T1D or T2D
+	 across(c(hba1c, glucose, GL_F, GL_NF), ~ ifelse(hba1c >= 6.5, NA, .x)),
+	 across(c(hba1c, glucose, GL_F, GL_NF), ~ ifelse((glycemic_fasting_status == "F") & (.x > 125), NA, .x)),
+	 across(c(hba1c, glucose, GL_F, GL_NF), ~ ifelse((glycemic_fasting_status == "NF") & (.x >= 200), NA, .x))) %>%
+  inner_join(select(covar_df, id, pop), by = "id") %>%
+  group_by(pop) %>%
+  mutate(across(c(hba1c, glucose, GL_F, GL_NF), ~ winsorize(.x, var_name = cur_column(), pop_name = unique(pop)))) %>%  # Winsorize within population subgroups
+  ungroup() %>%
+  select(-pop)
+
 outcome_df <- bp_df %>% 
   full_join(lipids_df,by="id") %>%
-  full_join(obesity_df,by="id")
+  full_join(obesity_df,by="id") %>%
+  full_join(glycemic_df,by="id")
 
 # Final processing -------------------------------------------------------------
 

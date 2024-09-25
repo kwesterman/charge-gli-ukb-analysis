@@ -55,104 +55,104 @@ glycemic_df <- input_file1 %>%
   select(id, hba1c, glucose, fasting_status)
 
 
-# Winsorization ------------------------------------------------------------
-
-# hba1c
-hba1c_upper <-
-  mean(glycemic_df$hba1c, na.rm = T) + (6 * sd(glycemic_df$hba1c, na.rm = T))
-hba1c_lower <-
-  mean(glycemic_df$hba1c, na.rm = T) - (6 * sd(glycemic_df$hba1c, na.rm = T))
-table(glycemic_df$hba1c > hba1c_upper) # 1748 above
-table(glycemic_df$hba1c < hba1c_lower) # none below
-
-table(glycemic_df$fasting_status, useNA = "ifany")
-
-# glucose - fasted (F)
-fasted_upper <-
-  mean(glycemic_df %>% filter(fasting_status == "F") %>% pull(glucose),
-       na.rm = T) +
-  (6 * sd(
-    glycemic_df %>% filter(fasting_status == "F") %>% pull(glucose),
-    na.rm = T
-  ))
-fasted_lower <-
-  mean(glycemic_df %>% filter(fasting_status == "F") %>% pull(glucose),
-       na.rm = T) -
-  (6 * sd(
-    glycemic_df %>% filter(fasting_status == "F") %>% pull(glucose),
-    na.rm = T
-  ))
-print(paste(
-  glycemic_df %>% filter(fasting_status == "F" &
-                           glucose > fasted_upper) %>% nrow,
-  "values winsorized fasted upper"
-)) # 89 above
-print(paste(
-  glycemic_df %>% filter(fasting_status == "F" &
-                           glucose < fasted_lower) %>% nrow,
-  "values winsorized fasted lower"
-)) # 0
-
-# glucose - non-fasted (NF)
-nonfasted_upper <-
-  mean(glycemic_df %>% filter(fasting_status == "NF") %>% pull(glucose),
-       na.rm = T) +
-  (6 * sd(
-    glycemic_df %>% filter(fasting_status == "NF") %>% pull(glucose),
-    na.rm = T
-  ))
-nonfasted_lower <-
-  mean(glycemic_df %>% filter(fasting_status == "NF") %>% pull(glucose),
-       na.rm = T) -
-  (6 * sd(
-    glycemic_df %>% filter(fasting_status == "NF") %>% pull(glucose),
-    na.rm = T
-  ))
-print(paste(
-  glycemic_df %>% filter(fasting_status == "NF" &
-                           glucose > nonfasted_upper) %>% nrow,
-  "values winsorized non-fasted lower"
-)) # 2157 above
-print(paste(
-  glycemic_df %>% filter(fasting_status == "NF" &
-                           glucose < nonfasted_lower) %>% nrow,
-  "values winsorized non-fasted lower"
-)) # 0
-
-
-glycemic_df <- glycemic_df %>%
-  mutate(
-    hba1c = ifelse(hba1c < hba1c_lower, hba1c_lower, hba1c),
-    hba1c = ifelse(hba1c > hba1c_upper, hba1c_upper, hba1c)
-  )
-
-glycemic_df <- glycemic_df %>%
-  mutate(
-    glucose = ifelse(
-      fasting_status == "F" &
-        glucose < fasted_lower,
-      fasted_lower,
-      glucose
-    ),
-    glucose = ifelse(
-      fasting_status == "F" &
-        glucose > fasted_upper,
-      fasted_upper,
-      glucose
-    ),
-    glucose = ifelse(
-      fasting_status == "NF" &
-        glucose < nonfasted_lower,
-      nonfasted_lower,
-      glucose
-    ),
-    glucose = ifelse(
-      fasting_status == "NF" &
-        glucose > nonfasted_upper,
-      nonfasted_upper,
-      glucose
-    )
-  )
+### Winsorization ------------------------------------------------------------
+##
+### hba1c
+##hba1c_upper <-
+##  mean(glycemic_df$hba1c, na.rm = T) + (6 * sd(glycemic_df$hba1c, na.rm = T))
+##hba1c_lower <-
+##  mean(glycemic_df$hba1c, na.rm = T) - (6 * sd(glycemic_df$hba1c, na.rm = T))
+##table(glycemic_df$hba1c > hba1c_upper) # 1748 above
+##table(glycemic_df$hba1c < hba1c_lower) # none below
+##
+##table(glycemic_df$fasting_status, useNA = "ifany")
+##
+### glucose - fasted (F)
+##fasted_upper <-
+##  mean(glycemic_df %>% filter(fasting_status == "F") %>% pull(glucose),
+##       na.rm = T) +
+##  (6 * sd(
+##    glycemic_df %>% filter(fasting_status == "F") %>% pull(glucose),
+##    na.rm = T
+##  ))
+##fasted_lower <-
+##  mean(glycemic_df %>% filter(fasting_status == "F") %>% pull(glucose),
+##       na.rm = T) -
+##  (6 * sd(
+##    glycemic_df %>% filter(fasting_status == "F") %>% pull(glucose),
+##    na.rm = T
+##  ))
+##print(paste(
+##  glycemic_df %>% filter(fasting_status == "F" &
+##                           glucose > fasted_upper) %>% nrow,
+##  "values winsorized fasted upper"
+##)) # 89 above
+##print(paste(
+##  glycemic_df %>% filter(fasting_status == "F" &
+##                           glucose < fasted_lower) %>% nrow,
+##  "values winsorized fasted lower"
+##)) # 0
+##
+### glucose - non-fasted (NF)
+##nonfasted_upper <-
+##  mean(glycemic_df %>% filter(fasting_status == "NF") %>% pull(glucose),
+##       na.rm = T) +
+##  (6 * sd(
+##    glycemic_df %>% filter(fasting_status == "NF") %>% pull(glucose),
+##    na.rm = T
+##  ))
+##nonfasted_lower <-
+##  mean(glycemic_df %>% filter(fasting_status == "NF") %>% pull(glucose),
+##       na.rm = T) -
+##  (6 * sd(
+##    glycemic_df %>% filter(fasting_status == "NF") %>% pull(glucose),
+##    na.rm = T
+##  ))
+##print(paste(
+##  glycemic_df %>% filter(fasting_status == "NF" &
+##                           glucose > nonfasted_upper) %>% nrow,
+##  "values winsorized non-fasted lower"
+##)) # 2157 above
+##print(paste(
+##  glycemic_df %>% filter(fasting_status == "NF" &
+##                           glucose < nonfasted_lower) %>% nrow,
+##  "values winsorized non-fasted lower"
+##)) # 0
+##
+##
+##glycemic_df <- glycemic_df %>%
+##  mutate(
+##    hba1c = ifelse(hba1c < hba1c_lower, hba1c_lower, hba1c),
+##    hba1c = ifelse(hba1c > hba1c_upper, hba1c_upper, hba1c)
+##  )
+##
+##glycemic_df <- glycemic_df %>%
+##  mutate(
+##    glucose = ifelse(
+##      fasting_status == "F" &
+##        glucose < fasted_lower,
+##      fasted_lower,
+##      glucose
+##    ),
+##    glucose = ifelse(
+##      fasting_status == "F" &
+##        glucose > fasted_upper,
+##      fasted_upper,
+##      glucose
+##    ),
+##    glucose = ifelse(
+##      fasting_status == "NF" &
+##        glucose < nonfasted_lower,
+##      nonfasted_lower,
+##      glucose
+##    ),
+##    glucose = ifelse(
+##      fasting_status == "NF" &
+##        glucose > nonfasted_upper,
+##      nonfasted_upper,
+##      glucose
+##    )
+##  )
 
 
 # Write file --------------------------------------------------------------

@@ -33,19 +33,21 @@ sample_exclusions <-
 valid_ids <-
   setdiff(pan_ancestry_df$id, sample_exclusions)  # Participants with genetics but not having revoked consent
 
-glycemic_df <- fread(glycemic_file, data.table = FALSE) %>%
+diabetes_glycemic_df <- fread(glycemic_file, data.table = FALSE) %>%
   filter(eid %in% valid_ids)
-basic_phenos_df <- fread(basic_phenos_file, data.table = FALSE) %>%
-  filter(eid %in% valid_ids)
+##diabetes_basic_phenos_df <- fread(basic_phenos_file, data.table = FALSE) %>%
+##  filter(eid %in% valid_ids)
 icd_df <- fread(icd_file, data.table = FALSE) %>%
+  rename(eid = f.eid) %>%
   filter(eid %in% valid_ids)
 add_icd_df <- fread(add_icd_file, data.table = FALSE) %>%
+  rename(eid = f.eid) %>%
   filter(eid %in% valid_ids)
 
 # Hba1c -------------------------------------------------------------------
 
 
-a1c <- glycemic_df %>%
+a1c <- diabetes_glycemic_df %>%
   select(id = eid,
          hba1c0 = `30750-0.0`,
          hba1c1 = `30750-1.0`) %>%
@@ -110,13 +112,13 @@ colnames(icd_codes) <- sub("\\.0\\.", "-0\\.", colnames(icd_codes))
 codes <- c("E100","E101","E102","E103","E104","E105","E107","E108","E109")
 icd_codes$E10_main <- as.integer(Reduce('|', lapply(icd_codes[paste('41202-0.', c(0:74), sep = "")], '%in%', codes))) 
 table(icd_codes$E10_main, useNA = "always")
-icd_codes$E10_secondary <- as.integer(Reduce('|', lapply(icd_codes[paste('41204-0.', c(0:185), sep = "")], '%in%', codes))) 
+icd_codes$E10_secondary <- as.integer(Reduce('|', lapply(icd_codes[paste('41204-0.', c(0:187), sep = "")], '%in%', codes))) 
 table(icd_codes$E10_secondary, useNA = "always")
 
 codes <-  c("2500","2501","2502","2503","2504","2505","2507","2508","2509")
-icd_codes$icd9_main <- as.integer(Reduce('|', lapply(icd_codes[paste('41203-0.', c(0:65), sep = "")], '%in%', codes))) 
+icd_codes$icd9_main <- as.integer(Reduce('|', lapply(icd_codes[paste('41203-0.', c(0:27), sep = "")], '%in%', codes)))
 table(icd_codes$icd9_main, useNA = "always")
-icd_codes$icd9_secondary <- as.integer(Reduce('|', lapply(icd_codes[paste('41205-0.', c(0:183), sep = "")], '%in%', codes))) 
+icd_codes$icd9_secondary <- as.integer(Reduce('|', lapply(icd_codes[paste('41205-0.', c(0:29), sep = "")], '%in%', codes))) 
 table(icd_codes$icd9_secondary, useNA = "always")
 
 codes <- c("E080","E081","E082","E083","E084","E085","E087","E088","E089","E090","E091","E092",
