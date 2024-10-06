@@ -283,17 +283,20 @@ is_chol_med = unlist(lapply(ls_atc_codes, function(x) any(grepl("^C10",x))))
 meds_df <- basic_phenos_df %>%
   select(
     id = eid,
-    contains("6177-0."),  # Self-reported cholesterol/BP/insulin medication use
+    contains("6177-0."),  # Self-reported cholesterol/BP/insulin medication use (male)
+    contains("6153-0."),  # Self-reported cholesterol/BP/insulin medication use (female)
     contains("20003-0.")
   ) %>%
   mutate(
-    bp_med_sr = rowSums(.[, paste0("6177-0.", 0:2)] == 2, na.rm=TRUE) >= 1,
-    chol_med_sr = rowSums(.[, paste0("6177-0.", 0:2)] == 1, na.rm=TRUE) >= 1,
+    bp_med_sr_male = rowSums(.[, paste0("6177-0.", 0:2)] == 2, na.rm=TRUE) >= 1,
+    chol_med_sr_male = rowSums(.[, paste0("6177-0.", 0:2)] == 1, na.rm=TRUE) >= 1,
+    bp_med_sr_female = rowSums(.[, paste0("6153-0.", 0:2)] == 2, na.rm=TRUE) >= 1,
+    chol_med_sr_female = rowSums(.[, paste0("6153-0.", 0:2)] == 1, na.rm=TRUE) >= 1,
     bp_med_atc = apply(.[, paste0("20003-0.", 0:47)],1,function(x) any(x%in%med_atc_df$Coding[is_bp_med])),
     chol_med_atc = apply(.[, paste0("20003-0.", 0:47)],1,function(x) any(x%in%med_atc_df$Coding[is_chol_med])),
-    bp_med = bp_med_sr | bp_med_atc, 
-    chol_med = chol_med_sr | chol_med_atc
-  ) 
+    bp_med = bp_med_sr_male | bp_med_sr_female | bp_med_atc,
+    chol_med = chol_med_sr_male | chol_med_sr_female | chol_med_atc
+  )
 
 bp_df <- basic_phenos_df %>%
   select(
