@@ -264,8 +264,36 @@ pa_df <- pa_df %>%
   ungroup() %>%
   select(id, dPA, qPA)
 	
-education_df <- basic_phenos_df %>%
-  select(id = eid)
+fnEduRank <- function(tEdu, colQual, colAgeEdu) {
+	
+	tEdu[[colAgeEdu]][is.na(tEdu[[colAgeEdu]])] = -9	
+	tEdu[[colQual]][is.na(tEdu[[colQual]])] = -9	
+	
+	aOut = 	ifelse(tEdu[[colQual]] == -7, 1, 
+				ifelse(tEdu[[colQual]] %in% c(3,4) | (tEdu[[colQual]] == 5 & tEdu[[colAgeEdu]] > 0 & tEdu[[colAgeEdu]] < 17), 2,
+					ifelse(tEdu[[colQual]] == 2 | (tEdu[[colQual]] == 5 & tEdu[[colAgeEdu]] >= 17 & tEdu[[colAgeEdu]] <= 19), 3, 
+						ifelse((tEdu[[colQual]] == 6 & tEdu[[colAgeEdu]] > 19) | (tEdu[[colQual]] == 5 & tEdu[[colAgeEdu]] > 19), 4, 
+							ifelse(tEdu[[colQual]] == 1, 5, NA)
+						)
+					)
+				)
+			)
+	return(aOut)
+}
+
+education_df <- data.frame(id = basic_phenos_df$eid, qEdu = rep(NA,nrow(basic_phenos_df)))
+# 845-0.0 Age completed full time education
+# 6138-0.* qualifications
+education_df$qEdu = pmax(fnEduRank(basic_phenos_df, "6138-0.0", "845-0.0"), 
+				fnEduRank(basic_phenos_df, "6138-0.1", "845-0.0"), 
+				fnEduRank(basic_phenos_df, "6138-0.2", "845-0.0"), 
+				fnEduRank(basic_phenos_df, "6138-0.3", "845-0.0"), 
+				fnEduRank(basic_phenos_df, "6138-0.4", "845-0.0"), 
+				fnEduRank(basic_phenos_df, "6138-0.5", "845-0.0"),
+				na.rm=T) - 1 
+
+education_df$dGRADCOL = ifelse(education_df$qEdu>=4,1,0)
+education_df$dSOMECOL = ifelse(education_df$qEdu>=3,1,0)
 
 exposure_df <- smoking_df %>%
   left_join(alcohol_df, by="id") %>%
